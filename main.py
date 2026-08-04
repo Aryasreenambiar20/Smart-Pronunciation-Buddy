@@ -12,84 +12,89 @@ def index():
 
 @app.route("/check", methods=["POST"])
 def check():
-    target_word = request.form.get("target", "").strip().lower()
 
-    if not target_word:
-        return jsonify({
-            "spoken": "",
-            "result": "failed",
-            "message": "No target word provided."
-        })
+    print("✅ /check route called")
+
+    target_word = request.form.get("target", "").strip().lower()
 
     recognizer = sr.Recognizer()
 
-    with sr.Microphone() as source:
-        print("🎙️ Listening... Speak now.")
+    try:
+        with sr.Microphone() as source:
 
-        # Reduce background noise
-        recognizer.adjust_for_ambient_noise(source, duration=1)
+            print("🎙️ Listening... Speak now.")
 
-        audio = recognizer.listen(source)
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
 
-        print("✅ Got the audio. Recognizing...")
+            audio = recognizer.listen(
+                source,
+                timeout=5,
+                phrase_time_limit=4
+            )
 
-        try:
-            # Recognize speech
-            spoken_word = recognizer.recognize_google(audio).lower().strip()
+        print("✅ Audio captured")
 
-            print("Recognized:", spoken_word)
+        spoken_word = recognizer.recognize_google(audio).lower().strip()
 
-            # If multiple words are recognized, take the first one
+        print("Recognized:", spoken_word)
+
+        if len(spoken_word.split()) > 1:
             spoken_word = spoken_word.split()[0]
 
-            target_code = phonetics.metaphone(target_word)
-            spoken_code = phonetics.metaphone(spoken_word)
+        target_code = phonetics.metaphone(target_word)
+        spoken_code = phonetics.metaphone(spoken_word)
 
-            similarity = SequenceMatcher(
+        similarity = round(
+            SequenceMatcher(
                 None,
                 spoken_word,
                 target_word
-            ).ratio() * 100
+            ).ratio() * 100,
+            2
+        )
 
-            print("--------------------------------")
-            print("Target Word :", target_word)
-            print("Spoken Word :", spoken_word)
-            print("Target Code :", target_code)
-            print("Spoken Code :", spoken_code)
-            print(f"Similarity  : {similarity:.2f}%")
-            print("--------------------------------")
+        if target_code == spoken_code:
+            result = "correct"
+        elif similarity >= 80:
+            result = "almost correct"
+        else:
+            result = "incorrect"
 
-            # Decide result
-            if target_code == spoken_code:
-                result = "correct"
-            elif similarity >= 80:
-                result = "almost correct"
-            else:
-                result = "incorrect"
+        return jsonify({
+            "spoken": spoken_word,
+            "result": result,
+            "similarity": similarity
+        })
 
-            return jsonify({
-                "spoken": spoken_word,
-                "result": result,
-                "similarity": round(similarity, 2)
-            })
+    except sr.WaitTimeoutError:
+        return jsonify({
+            "spoken": "",
+            "result": "failed",
+            "message": "No speech detected."
+        })
 
-        except sr.UnknownValueError:
-            print("😕 Could not understand audio")
+    except sr.UnknownValueError:
+        return jsonify({
+            "spoken": "",
+            "result": "failed",
+            "message": "Could not understand your speech."
+        })
 
-            return jsonify({
-                "spoken": "",
-                "result": "failed",
-                "message": "Could not understand speech."
-            })
+    except sr.RequestError:
+        return jsonify({
+            "spoken": "",
+            "result": "failed",
+            "message": "Speech Recognition service unavailable."
+        })
 
-        except sr.RequestError:
-            print("🌐 Google Speech Recognition service unavailable.")
+    except Exception as e:
+        print(e)
 
-            return jsonify({
-                "spoken": "",
-                "result": "failed",
-                "message": "Speech recognition service unavailable."
-            })
+        return jsonify({
+            "spoken": "",
+            "result": "failed",
+            "message": str(e)
+        })
 
 
 if __name__ == "__main__":
